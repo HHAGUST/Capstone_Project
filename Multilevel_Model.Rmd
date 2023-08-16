@@ -1,0 +1,700 @@
+---
+title: "Multilevel model"
+author: 'Jiayue Ao'
+date: "2023-07-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      eval = TRUE,
+                      message = FALSE, 
+                      warning = FALSE,
+                      comment = NA,
+                      cache = TRUE)
+```
+
+## 1. Packages
+```{r}
+# Packages
+library(haven)
+library(tidyverse)
+library(naniar)
+library(scales)
+library(lme4)
+library(jtools)
+library(stargazer)
+library(sjPlot)
+library(performance)
+library(nlme)
+library(lattice)
+library(sjmisc)
+library(sjPlot)
+library(glmmTMB)
+library(psych)
+```
+
+## 2. Dataset  
+### 2.1 Data Source
+Data Source: Understanding Society – The UK Household Longitudinal Study,
+             "w_indresp.dta", w means wave a to wave l (expect wave h)
+Download from: UK Data Service-SN6614-Understanding Society: Waves 1-12, 2009-2021                                 and Harmonised BHPS: Waves 1-18, 1991-2009
+
+### 2.2 Longitudinal dataset 
+The data are from the Understanding Society The UK Longitudinal study, where this dissertation selected the survey data from wave1 in 2009 to wave12 in 2021 indresp.dta, except for wave 8 survey. Because the main data of political Interest were omitted in wave 8 survey data. Therefore, there are total 11 waves data needed to study. The following most important thing to do is to combine the datasets from the 11 independent files into one longitudinal dataset.
+
+Based on the definition of older people, the project will select the observations aged between 60 and 69 in the first wave and attend all 11 waves(Fletcher, 2021).
+
+### 2.2.1  Selecting variables
+The project will collect the datat from the Understanding Society "w_indresp.dta". Because the data is scattered in 11 separate dta files, the project needs to be merged into one longitudinal dataset. 
+
+Based on the research question, the project will select 1 dependent variable and 5 independent variables. The dependent variable named political interest. In the survey, political interest is expressed as "_vote6". The value 1 means the respondent does not interested in politics. The value 2 means the respondent not very interested in political interest. The value 3 means the respondent fairly interested in politics. The value 4 means the respondent very interested in politics. The first independent variable is age. In the survey, age is expressed as "_dvage". The second independent variable is retirement. In the survey, retirement is expressed as "a_retdatey"(wave 1), "_jbendreas"(wave2-6), "_jbendreas6"(wave7-11). The value 1 of retirement means the older people is retired. The value 0 means the older people does not retire. The third independent variable is health. In the survey, health status is expressed as "_health". Health is a binary variable, value 1 means the observation is long-standing illness or disability, and value 0 means the observations does not long-standing illness or disability. For the variavle for the married status in the survey is  "_marstat_dv". The fourth independent variable widow and divorce could be found in "_marstat_dv". The fifthe variable income is continuous varibale.
+
+```{r}
+# Empty tibble
+temp_data <- tibble()
+
+# 11 years(waves)
+year_letters <- c("a", "b", "c", "d","e","f","g","i","j","k","l")
+year_nums <- c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+
+# Finding the variables from 11 data files
+for (i in 1:length(year_letters)) {
+  
+  year_letter <- year_letters[i]
+  year_num <- year_nums[i]
+  
+  
+  if (file.exists(paste0(year_letter, "_indresp.dta"))) {
+    
+    year_data <- read_dta(paste0(year_letter, "_indresp.dta"))
+    
+    if(year_num==1){
+      
+      # Finding the variables
+      selected_variables <- year_data %>%
+        rename(pidp = pidp,
+               PI = paste0(year_letter, "_vote6"),
+               age = paste0(year_letter, "_dvage"),
+               employment = paste0(year_letter, "_employ"),
+               sex = paste0(year_letter, "_sex_dv"),
+               health = paste0(year_letter, "_health"),
+               edu = paste0(year_letter, "_qfhigh_dv"),
+               marital_status = paste0(year_letter, "_marstat_dv"),
+               income = paste0(year_letter, "_fimnnet_dv"),
+               retirement = a_retdatey) %>%
+        select(pidp, PI, age, employment, sex, health, edu,marital_status, income, retirement) %>% 
+        mutate(wave = year_num,
+               retirement = ifelse(retirement>=0,1,NA))
+      
+    }
+    
+    if(year_num %in% 2:6){
+      
+      # Finding the variables
+      selected_variables <- year_data %>%
+        rename(pidp = pidp,
+               PI = paste0(year_letter, "_vote6"),
+               age = paste0(year_letter, "_dvage"),
+               employment = paste0(year_letter, "_employ"),
+               sex = paste0(year_letter, "_sex_dv"),
+               health = paste0(year_letter, "_health"),
+               edu = paste0(year_letter, "_qfhigh_dv"),
+               marital_status = paste0(year_letter, "_marstat_dv"),
+               income = paste0(year_letter, "_fimnnet_dv"),
+               retirement = paste0(year_letter, "_jbendreas")) %>%
+        select(pidp, PI, age, employment, sex, health, edu,marital_status, income, retirement) %>% 
+        mutate(wave = year_num,
+               retirement = ifelse(retirement==6,1,NA))
+      
+    }
+    
+    if(year_num %in% 7:11){
+      
+      # Finding the variables
+      selected_variables <- year_data %>%
+        rename(pidp = pidp,
+               PI = paste0(year_letter, "_vote6"),
+               age = paste0(year_letter, "_dvage"),
+               employment = paste0(year_letter, "_employ"),
+               sex = paste0(year_letter, "_sex_dv"),
+               health = paste0(year_letter, "_health"),
+               edu = paste0(year_letter, "_qfhigh_dv"),
+               marital_status = paste0(year_letter, "_marstat_dv"),
+               income = paste0(year_letter, "_fimnnet_dv"),
+               retirement = paste0(year_letter, "_jbendreas6")) %>%
+        select(pidp, PI, age, employment, sex, health, edu,marital_status, income, retirement) %>% 
+        mutate(wave = year_num,
+               retirement = ifelse(retirement==1,1,NA))
+      
+    }
+    
+    # Combine data together
+    temp_data <- bind_rows(temp_data, selected_variables)
+  }
+}
+```
+
+```{r}
+# Deal with retirement
+temp_data = temp_data %>% 
+  arrange(pidp,wave) %>% 
+  group_by(pidp) %>% 
+  fill(retirement,.direction = 'down') %>% 
+  ungroup() %>% 
+  mutate(retirement = ifelse(is.na(retirement),0,retirement))
+```
+
+```{r}
+# Define NA missing value
+temp_data$PI[temp_data$PI %in% c(-10, -9, -8, -7, -2, -1)] <- NA
+temp_data$edu[temp_data$edu %in% c(-9, -8)] <- NA
+temp_data$sex[temp_data$sex == -9] <- NA
+temp_data$employment[temp_data$employment %in% c(-9, -8, -2, -1)] <- NA
+temp_data$health[temp_data$health %in% c(-9, -8, -2, -1)] <- NA 
+temp_data$marital_status[temp_data$marital_status%in% c(-9, 0)] <- NA 
+temp_data$income[temp_data$income %in% c(-9, -4)] <- NA 
+
+# Delete NA missing value
+temp_data <- na.omit(temp_data)
+```
+
+```{r}
+# PI order change
+# According to the survey design(Understanding Society, 2023), the lower numeric result shows that people more interested in PI. However, this is a departure from normal logic. The person might think that a higher number represents a higher PI.
+# 1 is or not at all interested?
+# 2 is not very
+# 3 is Fairly
+# 4 is Very
+temp_data <- temp_data %>%
+  mutate(PI = case_when(
+    PI == 1 ~ 4,
+    PI == 2 ~ 3,
+    PI == 3 ~ 2,
+    PI == 4 ~ 1
+  ))
+
+# Education
+# The line of demarcation is EDUCATION, so 0 is not graduate, 1 is graduate.
+temp_data <- temp_data %>%
+  mutate(edu = case_when(
+    edu == 1 ~ 1,
+    edu == 2 ~ 1,
+    edu == 3 ~ 1,
+    edu == 4 ~ 1,
+    edu == 5 ~ 1,
+    edu == 6 ~ 1,
+    edu == 7 ~ 1,
+    edu == 8 ~ 1,
+    edu == 9 ~ 1,
+    edu == 10 ~ 1,
+    edu == 11 ~ 1,
+    edu == 12 ~ 1,
+    edu == 13 ~ 1,
+    edu == 14 ~ 1,
+    edu == 15 ~ 1,
+    edu == 16 ~ 1,
+    edu == 96 ~ 0
+  ))
+
+# Marital_status- 3 is widow, 4 is divorce
+temp_data <- temp_data %>%
+  mutate(marital_status = case_when(
+    marital_status == 1 ~ 0,
+    marital_status == 2 ~ 0,
+    marital_status == 3 ~ 1,
+    marital_status == 4 ~ 2,
+    marital_status == 5 ~ 0,
+    marital_status == 6 ~ 0
+  ))
+
+# Setting Log_income
+threshold <- 1e-10  
+# There existing the negative value in the income
+temp_data <- temp_data %>%
+  mutate(income = ifelse(income <= 0, threshold, income))
+# Log
+temp_data <- temp_data %>%
+  group_by(pidp) %>%
+  arrange(wave) %>%
+  mutate(log_income = log(income)) %>% 
+  ungroup()
+
+# Setting time Lag t-1
+temp_data <- temp_data %>%
+  group_by(pidp) %>%
+  arrange(wave) %>%
+  mutate(lag_retirement_1 = lag(retirement)) %>% 
+  ungroup()
+
+temp_data <- temp_data %>%
+  group_by(pidp) %>%
+  arrange(wave) %>%
+  mutate(lag_health_1 = lag(health)) %>% 
+  ungroup()
+
+temp_data <- temp_data %>%
+  group_by(pidp) %>%
+  arrange(wave) %>%
+  mutate(lag_marital_status_1 = lag(marital_status)) %>% 
+  ungroup()
+
+# Setting time Lag t-2
+temp_data <- temp_data %>%
+  group_by(pidp) %>%
+  arrange(wave) %>%
+  mutate(lag_retirement_2 = lag(retirement,2)) %>% 
+  ungroup()
+
+temp_data <- temp_data %>%
+  group_by(pidp) %>%
+  arrange(wave) %>%
+  mutate(lag_health_2 = lag(health,2)) %>% 
+  ungroup()
+
+temp_data <- temp_data %>%
+  group_by(pidp) %>%
+  arrange(wave) %>%
+  mutate(lag_marital_status_2 = lag(marital_status,2)) %>% 
+  ungroup()
+
+# Categorical variables
+temp_data$sex <- as.factor(temp_data$sex)
+temp_data$edu <- as.factor(temp_data$edu)
+temp_data$employment <- as.factor(temp_data$employment)
+temp_data$marital_status <- as.factor(temp_data$marital_status)
+temp_data$retirement <- as.factor(temp_data$retirement)
+temp_data$health <- as.factor(temp_data$health)
+
+temp_data$lag_marital_status_1 <- as.factor(temp_data$lag_marital_status_1)
+temp_data$lag_marital_status_2 <- as.factor(temp_data$lag_marital_status_2)
+
+
+temp_data$lag_retirement_1 <- as.factor(temp_data$lag_retirement_1)
+temp_data$lag_retirement_2 <- as.factor(temp_data$lag_retirement_2)
+
+temp_data$lag_health_1 <- as.factor(temp_data$lag_health_1)
+temp_data$lag_health_2 <- as.factor(temp_data$lag_health_2)
+```
+
+```{r}
+# Select aging population (first wave aged 60-69)
+Longitudinal_data <- temp_data  %>% 
+  arrange(pidp, wave) %>%  
+  group_by(pidp) %>%       
+  filter(n() == 11,        
+         first(age) >= 60, 
+         first(age) <= 69) %>% 
+  ungroup()
+```
+
+```{r}
+# Recode the value variable 
+data <- Longitudinal_data %>% 
+  ungroup() %>% 
+  select(pidp:lag_marital_status_2) %>% 
+  mutate(health = zap_label(health),
+         health = as.factor(health),
+         age = zap_label(age),
+         age = as.numeric(age),
+         income = zap_label(income),
+         income = as.numeric(income),
+         employment = fct_recode(employment,
+                                  'yes' = '1',
+                                  'no' = '2'),
+         employment = fct_relevel(employment,'no','yes'),
+         sex = fct_recode(sex,
+                          'male' = '1',
+                          'female' = '2'),
+         sex = fct_drop(sex),
+         health = fct_recode(health,
+                             'yes' = '1',
+                             'no' = '2'),
+         health = fct_relevel(health,'no','yes'),
+         edu = fct_recode(edu,
+                          'not graduate' = '0',
+                          'graduate' = '1'),
+         marital_status = fct_recode(marital_status,
+                                     'none' = '0',
+                                     'widow' = '1',
+                                     'divorce' = '2'),
+         retired = fct_recode(retirement,
+                              'no' = '0',
+                              'yes' = '1'),
+         lag_retired_1 = fct_recode(lag_retirement_1,
+                                    'no' = '0',
+                                    'yes' = '1'),
+         lag_retired_2 = fct_recode(lag_retirement_2, 
+                                    'no' = '0',
+                                    'yes' = '1'),
+         lag_health_1 = fct_recode(lag_health_1,
+                                   'yes' = '1',
+                                   'no' = '2'),
+         lag_health_2 = fct_recode(lag_health_2,
+                                   'yes' = '1',
+                                   'no' = '2'),
+         lag_marital_status_1 = fct_recode(lag_marital_status_1,
+                                     'none' = '0',
+                                     'widow' = '1',
+                                     'divorce' = '2'),
+         lag_marital_status_2 = fct_recode(lag_marital_status_2,
+                                     'none' = '0',
+                                     'widow' = '1',
+                                     'divorce' = '2')) %>% 
+  select(-retirement, -lag_retirement_1, -lag_retirement_2)
+```
+
+## 3. Visualization of variables
+```{r}
+vis_miss(data)
+```
+### 3.1 Politting age and politcial interest
+```{r}
+data %>% 
+  mutate(PI = as.factor(PI)) %>% 
+  count(PI) %>% 
+  ggplot(aes(x = PI, y = n, fill = PI)) +
+  geom_col() +
+  scale_fill_brewer(palette = 'RdBu',
+                    labels = c("Or not at all interested", "Not very interested", "Fairly interested", "Very interested")) + 
+  labs(x = 'Political Interest',
+       y = 'Frequency',
+       title = 'The Frequency of Political Interest') +
+  theme_bw() 
+```
+
+```{r}
+data %>% 
+  mutate(PI = as.factor(PI)) %>% 
+  count(PI, wave) %>% 
+  ggplot(aes(x = wave, y = n, fill = PI)) +
+  geom_bar(stat = 'identity', position = 'fill') +
+  scale_x_continuous(breaks = 1:11) +
+  scale_y_continuous(labels = percent) +
+  scale_fill_brewer(palette = 'RdBu',
+                    labels = c("Or not at all interested", "Not very interested", "Fairly interested", "Very interested")) +
+  labs(x = 'Waves',
+       y = 'Pencent (%)',
+       title = 'The Percentage of Each Degree of Political Interest in 11 Waves') +
+  theme_bw()+
+  theme_classic() +
+  theme(plot.title = element_text(size = 12))
+```
+
+```{r}
+data %>% 
+  mutate(PI = as.factor(PI)) %>% 
+  ggplot(aes(x = PI,y = age)) +
+  geom_violin(mapping = aes(fill = PI),alpha = 0.5) +
+  geom_jitter(mapping = aes(color = PI),alpha = 0.3) +
+  scale_fill_brewer(palette = 'RdBu',
+    labels = c("Or not at all interested", "Not very interested", "Fairly interested", "Very interested")) +
+  scale_colour_brewer(palette = 'RdBu',
+    labels = c("Or not at all interested", "Not very interested", "Fairly interested", "Very interested")) +
+  labs(x = 'Political Interest',
+       y = 'Ages',
+       title = 'The Degree of Political Interest at Different Ages') +
+  theme_bw()
+```
+
+```{r}
+plot_grpfrq(data$PI, data$age, type = "violin")
+```
+The figures shows that older people of different ages are concentrated in different levels of political interest. 
+
+### 3.2 Plotting time-varing variable retirement and political interest
+```{r}
+data %>% 
+  count(PI,retired) %>% 
+  ggplot(aes(x = PI,y = n,fill = retired)) +
+  geom_bar(stat = 'identity',position = 'fill') +
+  scale_y_continuous(labels = percent) +
+  labs(x = 'Political Interest',
+       y = 'Pencent (%)',
+       fill = 'Retirement Status',
+       title = 'The Percent of Political Interest at Different Retirement Status') +
+  theme_bw() +
+  theme(plot.title = element_text(size = 12))
+```
+
+### 3.3 Plotting income and political interest
+```{r}
+data %>% 
+  mutate(PI = as.factor(PI)) %>% 
+  ggplot(aes(x = PI,y = income)) +
+  geom_violin(mapping = aes(fill = PI),alpha = 0.5) +
+  geom_jitter(mapping = aes(color = PI),alpha = 0.1) +
+  scale_fill_brewer(palette = 'RdBu',
+                    labels = c("Or not at all interested", "Not very interested", "Fairly interested", "Very interested")) +
+  scale_colour_brewer(palette = 'RdBu',
+                      labels = c("Or not at all interested", "Not very interested", "Fairly interested", "Very interested")) +
+  scale_y_sqrt() +
+  labs(x = 'Political Interest',
+       y = 'Income',
+       title = 'The Degree of Political Interest at Different Incomes') +
+  theme_bw() 
+```
+
+### 3.4 Plotting health status and political interest
+```{r}
+data %>% 
+  count(PI,health) %>% 
+  ggplot(aes(x = PI,y = n,fill = health)) +
+  geom_bar(stat = 'identity',position = 'fill') +
+  scale_y_continuous(labels = percent) +
+  labs(x = 'Political Interest',
+       y = 'Pencent (%)',
+       fill = 'Health',
+       title = 'The Percent of Political Interest at Different Healths') +
+  theme_bw() +
+  theme(plot.title = element_text(size = 12))
+```
+
+### 3.5 Plotting widow and political interest
+```{r}
+data %>% 
+  count(PI, marital_status) %>%
+  ggplot(aes(x = PI, y = n, fill = marital_status)) +
+  geom_bar(stat = 'identity', position = 'fill') +
+  scale_y_continuous(labels = percent) +
+  labs(x = 'Political Interest',
+       y = 'Percent (%)',
+       fill = 'marital_status',
+       title = 'The Percent of Political Interest at Different marital_status') +
+  theme_bw() +
+  theme(plot.title = element_text(size = 12))
+
+```
+### 3.6 Descriptive Statistics
+
+```{r}
+Descriptive <- summary(data)
+```
+
+```{r}
+print(Descriptive)
+```
+## 4. A baseline variance components model
+
+```{r}
+m0 <- lmer(PI ~ (1 | pidp), data = data)
+summary(m0, correlation = FALSE)
+```
+The aim of the study is to examine how the dependent variable PI depends on different pidp (that is, individual ids). The random intercept of the model only considers different pidp (individual ids) without any fixed effects. The model means that you are estimating the variance of the average PI value for each pidp, as well as the overall average of the PI values. The hierarchy of longitudinal data is panel data, Level 1: occasions, Level 2: pidp (Bell & Fairvrother & Jones, 2018).
+
+REML criterion at convergence：11101.8
+Random effects：
+-pidp (Intercept): the Variance of the random intercept for pidp is 0.5508, Std. Dev. is 0.7421.
+-Residual：the Variance of the model residual is 0.2614, Std. Dev. is 0.5112.
+The variance of the residuals (0.2614) is smaller than the variance of the pidp (0.5508). Therefore, The variation between older people is larger than the variation between occasions within older people. 
+
+Fixed effects: 
+For constant term, estimate value 2.68238, Std. Error 0.03189, t value 84.12. The result of fixed effect means that the overall mean of the PI is 2.68238.
+
+## 5. A linear growth curve model
+### 5.1 Age, fixed explanatory variables
+A first step in modelling the between occasion within older people, or level 1, variation would be to fit a fixed linear trend. Age as fixed explanatory variables.
+```{r}
+m1 <- lmer(PI ~ age + (1 | pidp), data = data)
+summary(m1, correlation = FALSE)
+```
+REML criterion at convergence: 11067.3. The REML value is smaller compared to the previous model m0 without fixed explanatory variables. The resulte means that the model with fixed explanatory variables fits better.
+
+Random effects:
+-pidp (Intercept): The variance of the pidp (Intercept) decreased slightly, from 0.5508 to 0.5476. The decrease is slight.
+-Resdisual: The variance of the residuals also decreased slightly, from 0.2614 to 0.2595.
+The variance of the random effects decreased slightly. Because the decrease was samll, suggesting that age did not explain a great deal of the variation within pidp.
+
+Fixed effects:
+The intercept decreases from 2.69534 to 1.847213. The result means that the predicted value of the PI is 1.847213 when age is 0. 
+The estimate of age is 0.012086. The result means that when the unit of age increase, the predicted value of the PI increases by 0.012086 units on average. Moreover, the t-value is 6.744, which is usually considered statistically significant, meaning that age is a significant predictor variable.
+
+Likelihood Ratio Test (LRT) is equal to 34.51423, means the m1 fit is better 
+```{r}
+-2*(logLik(m0)-logLik(m1))
+```
+
+### 5.2 Random intercept and random slope model
+
+The section 5.2 will make the coefficient of age random at level 2. The model includes random intercept and random slope.
+```{r}
+m2 <- lmer(PI ~ age + (1 + age | pidp), data = data)
+
+summary(m2, correlation = FALSE)
+```
+In the m2, the random slope is age. The definition of random slope is allowing the associations between variables to vary across higher-level entities (Bell & Fairbrothers &Jones, 2018).
+
+Random Effect:
+- The variance of pidp (Intercept) is 7.05370 with a standard deviation of 2.65588, which means that there is significant variation in the baseline PI value (the value when age is 0) between different pidp groups. 
+- The variance of age is 0.00128 with a standard deviation of 0.03578. this means that there is also significant variation in the slope of the effect of age on PI between different pidp groups.
+- The value of Corr is -0.96，and the value close to -1. Thus, the age as random slope is insignificant. Because everyone gets same coefficient for age and gets same random effect. Moreover, model failed to converge, and the model needs to be simplified. The study of the project focus on the group of older people. As the samples all about older people, thus the coefficient may not much different. Therefore, the following model will drop age as random slope and only include pidp as random intercept. The conclusion is different from the Bell & Fairbrothers &Jones (2018) that within-between RE model needs to include random slopes as much as possible.
+
+Fixed Effect:
+- Intercept
+1.843579 is the estimated average value of the PI when age is zero. 
+Std. Error: The value of Std. Error is 0.163468. T-value is 11.28 which is statistically significant.
+-age
+The variable age is a significant predictor of the dependent variable. The coefficient for age is 0.012221. For every one-unit increase in age, the predicted value of PI increases by 0.012221 units, holding other factors constant. The Std. Error is 0.002288. T-value is 5.34. The result shows that  the relationship between age and DV is statistically significant. 
+
+Likelihood Ratio Test (LRT) is equal to 147.8674.
+```{r}
+-2*(logLik(m1)-logLik(m2))
+```
+### 5.3 Predicted slopes
+To generate the predicted slopes for each older people type
+```{r}
+# Select the first 50 unique pidp
+selected_pidp = unique(data$pidp)[30:50]
+
+# Filter the data
+selected_data = data[data$pidp %in% selected_pidp,]
+
+# Generate fitted scores for the selected samples
+selected_predscore = fitted(m2)[data$pidp %in% selected_pidp]
+
+# Make the plot
+xyplot(selected_predscore ~ age, data = selected_data, groups = pidp, type = c("p", "l"), col = "blue")
+```
+Since there are too many pidp (individuals), some of the pidp are selected and the predictor scores of the predicted political interest score are plotted. According to the picture, most of the pidp will have a predictor value that rises with age.
+
+### 5.4 Repeated measures modelling of non-linear polynomial growth
+Check for non-linear relationships
+```{r}
+m3 <- lmer(PI ~ age + I(age^2) + (1 | pidp), data = data)
+summary(m3)
+```
+
+```{r}
+# Select the first 50 unique pidp
+selected_pidp = unique(data$pidp)[30:50]
+
+# Filter the data
+selected_data = data[data$pidp %in% selected_pidp,]
+
+# Generate fitted scores for the selected samples
+selected_predscore_2 = fitted(m3)[data$pidp %in% selected_pidp]
+
+# Make the plot
+xyplot(selected_predscore_2 ~ age, data = selected_data, groups = pidp, type = c("p", "l"), col = "blue")
+```
+The pciture shows that with the age increase, the political interest predicted score will increase then decrase. The line of predicted score is nolinear.
+
+The likelihood statistic value is negative -146.7237. The result shows that the quadratic term would not improve the model.
+```{r}
+-2*(logLik(m2)-logLik(m3))
+```
+
+## 6. Full Multilvel Model
+```{r}
+# Time-lag for income
+data <- data %>%
+  group_by(pidp) %>%
+  arrange(wave) %>%
+  mutate(lag_income_1 = lag(log_income)) %>% 
+  ungroup()
+
+data <- data %>%
+  group_by(pidp) %>%
+  arrange(wave) %>%
+  mutate(lag_income_2 = lag(log_income,2)) %>% 
+  ungroup()
+
+```
+
+### 6.1 Full variables without time-lag
+```{r}
+gm1 <- lmer(PI ~ age + retired + health + marital_status + health + log_income + (1 |pidp), data = data)
+summary(gm1, correlation = FALSE)
+```
+
+```{r}
+summ(gm1,confint = T)
+```
+
+### 6.2 Time lag t-1
+```{r}
+gm2 <- lmer(PI ~  age + lag_retired_1  + lag_health_1 + lag_marital_status_1 + lag_income_1 + (1 |pidp), data = data, na.action=na.exclude)
+summary(gm2, correlation = FALSE)
+```
+
+```{r}
+summ(gm2,confint = T)
+``` 
+### 6.3 Time lag t-2
+```{r}
+gm3 <- lmer(PI ~  age + lag_retired_2  + lag_health_2 + lag_marital_status_2 + lag_income_2 + (1 |pidp), data = data, na.action=na.exclude)
+summary(gm3, correlation = FALSE)
+```
+
+```{r}
+summ(gm3,confint = T)
+```
+The value of REML is 9231.6. For the random effects, the variance of pidp intercept is 0.5343, the standard deviation is 0.7310. The variance of residual is 0.2565, the standard deviation is 0.5064. The Intra-Class Correlation ICC is 0.68. In other words, 68% of the total variability in political interest is attributed to differences between individual groups. The remaining 32% of the variability comes from differences within the same pidp group across different occasions. 
+
+The results of this thesis support the inference of hypothesis1. The estimate value of age is 0.014063, standard deviation is 0.002353. Age is statistically significant with political interest because t-value is 5.978. Holding other variable constant, an increase in age by 1 unit is associated with a change in political by 0.014063 units on average with a 95% confidence interval of (0.01, 0.02). The predicted value of political interest as figure11 showed. The relationship between age and political interest is positive. Moreover, the estimate value of intercept is 1.712915, and standard deviation is 0.169259. Intercept is statistically significant because t-value is 10.120. When all variables are 0, the average value of political interest is 1.712915 with a 95% confidence interval of (1.38, 2.04).
+
+The estimate value of retirement is -0.024600, the standard deviation is 0.063427. Compared to those who were not retired two periods ago, those who retired two periods ago are expected to have a 0.026 units lower political interest with confidence interval (-0.15, 0.10). However, t-value is -0.388, which means retirement may not statistically significant. 
+
+The estimate value of income is 0.005629, standard deviation is 0.003419. The t-value of income is 1.646, which is statistically significant. An increase in income by 1% from two periods ago is associated with a change in political interest by 0.00005629 units on average at 90% confidence interval (-0.00, 0.01).
+
+The estimate value of health is 0.027125, the standard deviation is 0.019628. Compared to those who were not retired two periods ago, those who retired two periods ago are expected to have a 0.027125 units lower political interest with a confidence interval (-0.01, 0.07). However, t-value is 1.382, which is not 95% statistically significant.
+
+The estimate value of widow is -0.134932, the standard deviation is 0.050824. The t-value of widow is -2.655, which is statistically significant. Compared to other marital statuses, those who were widowed two periods ago are expected to have a 0.134932 units lower political interest, with a 95% confidence interval of (-0.23, -0.04). The estimate value of dicorce is -0.244441, the standard deviation is 0.058991, t-value is -4.141. Divorce is statistically significant. Compared to other marital statuses, those who were divorced two periods ago are expected to have a 0.244 units lower political interest, with a 95% confidence interval of (-0.36, -0.13). 
+```{r}
+stargazer(gm3, type = 'text')
+```
+
+```{r}
+gm4 <- lmer(PI ~  age + lag_retired_2  + lag_health_2 + lag_marital_status_2 + log_income + (1 |pidp), data = data, na.action=na.exclude)
+summary(gm4, correlation = FALSE)
+```
+
+```{r}
+summ(gm4,confint = T)
+```
+
+```{r}
+gm5 <- lmer(PI ~  age + lag_retired_2  + lag_health_2 + lag_marital_status_2 + lag_income_1 + (1 |pidp), data = data, na.action=na.exclude)
+summary(gm5, correlation = FALSE)
+```
+
+```{r}
+summ(gm5,confint = T)
+```
+
+```{r}
+gm6 <- lmer(PI ~  age + lag_retired_1  + lag_health_2+ lag_marital_status_2 + lag_income_2 + (1 |pidp), data = data, na.action=na.exclude)
+summary(gm6, correlation = FALSE)
+```
+
+```{r}
+summ(gm6,confint = T)
+```
+
+### 6.4 Compare the models
+```{r}
+stargazer(m0, m1, m2, m3, gm1, gm2, gm3, gm4, gm5,gm6, type = 'text')
+```
+Overall, the 7th model gm3 is the best fitting model among all multilevel models.
+
+# 7. Fitting, Prediction value
+```{r}
+# Visualising the coefficients of the gm3 model
+plot_model(gm3,type = 'std') +
+  theme_bw()
+```
+
+```{r}
+## Visualising the random effect of the gm3 model
+# The figure shows the random effects of the gm3 model. Each row represents a older person
+plot_model(gm3,type = 're') +
+  theme_bw() +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+```
+
+```{r}
+# Predict the value 
+plot_model(gm3, type = 'pred')
+```
+
