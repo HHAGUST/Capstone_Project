@@ -12,8 +12,8 @@ In part completion of the MSc in Applied Social Data Science
 Department of Methodology 
 London School of Economics and Political Science
 
-# Software: R, Stata
+Software: R, Stata
 
-# "Multilevel_Model.Rmd" and "Multilevel_Model.html" contain the same content, and in different file formats. The rmd and html is the main analysis for the capstone project
+"Multilevel_Model.Rmd" and "Multilevel_Model.html" contain the same content, and in different file formats. The rmd and html is the main analysis for the capstone project
 
-# "First Wvae Analysis Code" is a stata Do-file. 
+"First Wvae Analysis Code" is a stata Do-file. 
