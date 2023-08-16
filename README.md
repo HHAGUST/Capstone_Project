@@ -3,7 +3,7 @@
 Title: Political Interest in Older Age: Evidence from the United Kingdom
 
 Candidate Number: 54817
-Word Count (Excluding bibliography): 9808
+Word Count (Excluding bibliography): 9922
 Supervisor: Professor Patrick Sturgis
 Date: August 2023
 
